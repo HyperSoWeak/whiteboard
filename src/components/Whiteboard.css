@@ -15,12 +15,12 @@
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   padding: 8px 16px;
-  background-color: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(10px);
-  border-radius: 100px;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  background-color: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  border-radius: 20px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
   z-index: 100;
   border: 1px solid rgba(0, 0, 0, 0.05);
 }
@@ -38,10 +38,10 @@
   margin: 0 8px;
 }
 
+/* Base Buttons */
 .floating-toolbar button {
-  width: 40px;
-  height: 40px;
-  padding: 0;
+  width: 38px;
+  height: 38px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -49,54 +49,138 @@
   background: transparent;
   color: #64748b;
   cursor: pointer;
-  border-radius: 50%;
+  border-radius: 12px;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.floating-toolbar button:hover {
+.floating-toolbar button:hover:not(:disabled) {
   background-color: #f1f5f9;
   color: #1e293b;
 }
 
-.floating-toolbar button.active {
+.floating-toolbar button.active:not(.profile-dot-btn) {
   background-color: #2563eb;
   color: white;
-  box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
 }
 
-.color-swatch {
-  width: 24px !important;
-  height: 24px !important;
-  border: 2px solid white !important;
-  box-shadow: 0 0 0 1px #e2e8f0;
+/* Profiles Dot UI */
+.profiles-container {
+  display: flex;
+  gap: 4px;
+  align-items: center;
 }
 
-.color-swatch.selected {
-  transform: scale(1.2);
+.profile-slot {
+  position: relative;
+}
+
+.profile-dot-btn {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+}
+
+.profile-dot-btn:hover {
+  background: #f1f5f9 !important;
+}
+
+.profile-dot-btn.active {
+  background: #eff6ff !important;
   box-shadow: 0 0 0 2px #2563eb;
 }
 
-input[type="color"] {
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: none;
-  background: transparent;
+.profile-dot {
+  border-radius: 50%;
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05);
+}
+
+/* Settings Popover */
+.profile-settings-popover {
+  position: absolute;
+  bottom: 45px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  padding: 12px;
+  border-radius: 16px;
+  box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 180px;
+  border: 1px solid #f1f5f9;
+  animation: slideIn 0.15s ease-out;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.popover-section.colors {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.color-swatch {
+  width: 28px !important;
+  height: 28px !important;
+  border: 2px solid white !important;
+  box-shadow: 0 0 0 1px #e2e8f0;
+  border-radius: 50% !important;
   cursor: pointer;
 }
 
-.slider-group {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 100px;
+.color-swatch.selected {
+  box-shadow: 0 0 0 2px #2563eb;
+  transform: scale(1.1);
 }
 
-.size-label {
+.custom-color-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px dashed #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.custom-color-input {
+  position: absolute;
+  width: 150%;
+  height: 150%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.popover-divider {
+  height: 1px;
+  background: #f1f5f9;
+}
+
+.popover-section.size {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.size-header {
+  display: flex;
+  justify-content: space-between;
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 800;
   color: #94a3b8;
-  margin-top: -4px;
+  text-transform: uppercase;
+}
+
+.size-value {
+  color: #2563eb;
 }
 
 input[type="range"] {
@@ -104,8 +188,8 @@ input[type="range"] {
   cursor: pointer;
 }
 
+/* Others */
 .action-btn.delete:hover {
-  background-color: #fee2e2;
   color: #dc2626;
 }
 
@@ -113,14 +197,12 @@ input[type="range"] {
   flex: 1;
   position: relative;
   background-color: white;
-  cursor: none; /* Hide default cursor to show brush preview */
 }
 
 canvas {
   display: block;
 }
 
-/* Brush Preview */
 .brush-preview {
   position: absolute;
   pointer-events: none;
@@ -129,32 +211,4 @@ canvas {
   transform: translate(-50%, -50%);
   z-index: 50;
   background-color: transparent;
-}
-
-.text-element {
-  position: absolute;
-  user-select: none;
-  cursor: text;
-  padding: 4px;
-  border-radius: 4px;
-  border: 1px solid transparent;
-  transition: border-color 0.2s;
-}
-
-.text-element:hover {
-  border-color: #e2e8f0;
-}
-
-.text-element.editing {
-  border: 2px dashed #2563eb;
-  background: rgba(37, 99, 235, 0.05);
-}
-
-.text-element input {
-  font-family: inherit;
-  background: transparent;
-  border: none;
-  outline: none;
-  padding: 0;
-  margin: 0;
 }
