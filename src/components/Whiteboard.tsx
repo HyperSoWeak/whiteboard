@@ -7,7 +7,6 @@ interface Point {
 }
 
 // TODO: Re-implement and fix the Text Tool functionality.
-// It was removed temporarily due to interaction stability issues with the object-oriented system.
 type Tool = 'select' | 'pen' | 'eraser' | 'rectangle' | 'circle' | 'line';
 
 interface Element {
@@ -27,6 +26,9 @@ const Whiteboard: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [elements, setElements] = useState<Element[]>([]);
+  const [history, setHistory] = useState<Element[][]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  
   const [tool, setTool] = useState<Tool>('pen');
   const [color, setColor] = useState('#2563eb');
   const [lineWidth, setLineWidth] = useState(5);
@@ -36,6 +38,76 @@ const Whiteboard: React.FC = () => {
   const [currentElement, setCurrentElement] = useState<Element | null>(null);
   const [startOffset, setStartOffset] = useState<Point>({ x: 0, y: 0 });
   const [cursorPos, setCursorPos] = useState<Point | null>(null);
+
+  // --- History Management ---
+
+  const saveToHistory = useCallback((newElements: Element[]) => {
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push([...newElements]);
+    setHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+  }, [history, historyIndex]);
+
+  const undo = useCallback(() => {
+    if (historyIndex > 0) {
+      const prevIndex = historyIndex - 1;
+      setHistoryIndex(prevIndex);
+      setElements(history[prevIndex]);
+      setSelectedId(null);
+    } else if (historyIndex === 0) {
+      setHistoryIndex(-1);
+      setElements([]);
+      setSelectedId(null);
+    }
+  }, [history, historyIndex]);
+
+  const redo = useCallback(() => {
+    if (historyIndex < history.length - 1) {
+      const nextIndex = historyIndex + 1;
+      setHistoryIndex(nextIndex);
+      setElements(history[nextIndex]);
+    }
+  }, [history, historyIndex]);
+
+  // --- Shortcuts ---
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isCtrl = e.ctrlKey || e.metaKey;
+      
+      if (isCtrl && e.key.toLowerCase() === 'z') {
+        if (e.shiftKey) redo();
+        else undo();
+        e.preventDefault();
+      } else if (isCtrl && e.key.toLowerCase() === 'y') {
+        redo();
+        e.preventDefault();
+      } else if (!isCtrl) {
+        switch (e.key.toLowerCase()) {
+          case 'q': setTool('select'); break;
+          case 'w': setTool('pen'); break;
+          case 'e': setTool('eraser'); break;
+          case 'a': setTool('rectangle'); break;
+          case 's': setTool('circle'); break;
+          case 'd': setTool('line'); break;
+          case 'backspace':
+          case 'delete':
+            if (selectedId) {
+              const newElements = elements.filter(el => el.id !== selectedId);
+              setElements(newElements);
+              saveToHistory(newElements);
+              setSelectedId(null);
+            }
+            break;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo, selectedId, elements, saveToHistory]);
+
+  // --- Core Rendering ---
 
   const drawElement = useCallback((ctx: CanvasRenderingContext2D, element: Element) => {
     ctx.strokeStyle = element.color;
@@ -94,9 +166,7 @@ const Whiteboard: React.FC = () => {
     if (currentElement) drawElement(ctx, currentElement);
   }, [elements, currentElement, drawElement]);
 
-  useEffect(() => {
-    render();
-  }, [render]);
+  useEffect(() => { render(); }, [render]);
 
   const resizeCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -114,6 +184,8 @@ const Whiteboard: React.FC = () => {
     window.addEventListener('resize', resizeCanvas);
     return () => window.removeEventListener('resize', resizeCanvas);
   }, [resizeCanvas]);
+
+  // --- Interaction ---
 
   const getCoordinates = (e: any): Point => {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -198,35 +270,45 @@ const Whiteboard: React.FC = () => {
 
   const handleMouseUp = () => {
     if (action === 'drawing' && currentElement) {
-      setElements(prev => [...prev, currentElement]);
+      const newElements = [...elements, currentElement];
+      setElements(newElements);
+      saveToHistory(newElements);
       setCurrentElement(null);
+    } else if (action === 'moving') {
+      saveToHistory(elements);
     }
     setAction('none');
+  };
+
+  const clearCanvas = () => {
+    setElements([]);
+    saveToHistory([]);
+    setSelectedId(null);
   };
 
   return (
     <div className="whiteboard-container" ref={containerRef}>
       <div className="floating-toolbar">
         <div className="tool-section">
-          <button className={tool === 'select' ? 'active' : ''} onClick={() => setTool('select')} title="Select/Move">
+          <button className={tool === 'select' ? 'active' : ''} onClick={() => setTool('select')} title="Select (Q)">
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" strokeWidth="2.5"><path d="M5 3l14 9-7 2 7 7-3 1-6-7-5 5V3z"/></svg>
           </button>
-          <button className={tool === 'pen' ? 'active' : ''} onClick={() => setTool('pen')} title="Pen">
+          <button className={tool === 'pen' ? 'active' : ''} onClick={() => setTool('pen')} title="Pen (W)">
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" strokeWidth="2.5"><path d="M12 19l7-7 3 3-7 7-3-3zM18 13l-1.5-1.5M2 22l5-5M2 22v-5l5 5zM11 7l4-4 2 2-4 4-2-2z"/></svg>
           </button>
-          <button className={tool === 'eraser' ? 'active' : ''} onClick={() => setTool('eraser')} title="Eraser">
+          <button className={tool === 'eraser' ? 'active' : ''} onClick={() => setTool('eraser')} title="Eraser (E)">
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" strokeWidth="2.5"><path d="M20 20H7L3 16C2 15 2 14 3 13L13 3C14 2 15 2 16 3L21 8C22 9 22 10 21 11L15 17L20 20Z"/><path d="M18 11L11 4"/></svg>
           </button>
         </div>
         <div className="divider" />
         <div className="tool-section">
-          <button className={tool === 'rectangle' ? 'active' : ''} onClick={() => setTool('rectangle')} title="Rectangle">
+          <button className={tool === 'rectangle' ? 'active' : ''} onClick={() => setTool('rectangle')} title="Rectangle (A)">
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
           </button>
-          <button className={tool === 'circle' ? 'active' : ''} onClick={() => setTool('circle')} title="Circle">
+          <button className={tool === 'circle' ? 'active' : ''} onClick={() => setTool('circle')} title="Circle (S)">
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" strokeWidth="2.5"><circle cx="12" cy="12" r="9"/></svg>
           </button>
-          <button className={tool === 'line' ? 'active' : ''} onClick={() => setTool('line')} title="Line">
+          <button className={tool === 'line' ? 'active' : ''} onClick={() => setTool('line')} title="Line (D)">
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" strokeWidth="2.5"><line x1="5" y1="19" x2="19" y2="5"/></svg>
           </button>
         </div>
@@ -242,7 +324,16 @@ const Whiteboard: React.FC = () => {
           <span className="size-label">{lineWidth}px</span>
         </div>
         <div className="divider" />
-        <button onClick={() => setElements([])} className="action-btn delete" title="Clear All">
+        <div className="tool-section">
+          <button onClick={undo} disabled={historyIndex < 0} title="Undo (Ctrl+Z)">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" strokeWidth="2.5"><path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
+          </button>
+          <button onClick={redo} disabled={historyIndex >= history.length - 1} title="Redo (Ctrl+Y)">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" strokeWidth="2.5"><path d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6"/></svg>
+          </button>
+        </div>
+        <div className="divider" />
+        <button onClick={clearCanvas} className="action-btn delete" title="Clear All">
           <svg viewBox="0 0 24 24" width="18" height="18" stroke="#ef4444" fill="none" strokeWidth="2.5"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6"/></svg>
         </button>
       </div>
