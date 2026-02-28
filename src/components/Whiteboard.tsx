@@ -6,51 +6,108 @@ interface Point {
   y: number;
 }
 
-interface TextElement {
+// TODO: Re-implement and fix the Text Tool functionality.
+// It was removed temporarily due to interaction stability issues with the object-oriented system.
+type Tool = 'select' | 'pen' | 'eraser' | 'rectangle' | 'circle' | 'line';
+
+interface Element {
   id: string;
+  type: Tool;
+  points?: Point[];
   x: number;
   y: number;
-  text: string;
+  width?: number;
+  height?: number;
+  radius?: number;
   color: string;
-  fontSize: number;
+  lineWidth: number;
 }
-
-type Tool = 'pen' | 'eraser' | 'text' | 'rectangle' | 'circle' | 'line';
 
 const Whiteboard: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
+  const [elements, setElements] = useState<Element[]>([]);
   const [tool, setTool] = useState<Tool>('pen');
   const [color, setColor] = useState('#2563eb');
   const [lineWidth, setLineWidth] = useState(5);
-  const [texts, setTexts] = useState<TextElement[]>([]);
-  const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
-  const [startPos, setStartPos] = useState<Point>({ x: 0, y: 0 });
-  const [snapshot, setSnapshot] = useState<ImageData | null>(null);
+  
+  const [action, setAction] = useState<'none' | 'drawing' | 'moving'>('none');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [currentElement, setCurrentElement] = useState<Element | null>(null);
+  const [startOffset, setStartOffset] = useState<Point>({ x: 0, y: 0 });
   const [cursorPos, setCursorPos] = useState<Point | null>(null);
+
+  const drawElement = useCallback((ctx: CanvasRenderingContext2D, element: Element) => {
+    ctx.strokeStyle = element.color;
+    ctx.fillStyle = element.color;
+    ctx.lineWidth = element.lineWidth;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    switch (element.type) {
+      case 'pen':
+      case 'eraser':
+        if (element.points && element.points.length > 0) {
+          ctx.beginPath();
+          ctx.moveTo(element.points[0].x, element.points[0].y);
+          element.points.forEach(p => ctx.lineTo(p.x, p.y));
+          ctx.strokeStyle = element.type === 'eraser' ? '#ffffff' : element.color;
+          ctx.stroke();
+        }
+        break;
+      case 'rectangle':
+        ctx.beginPath();
+        ctx.strokeRect(element.x, element.y, element.width || 0, element.height || 0);
+        break;
+      case 'circle':
+        ctx.beginPath();
+        ctx.arc(element.x, element.y, element.radius || 0, 0, 2 * Math.PI);
+        ctx.stroke();
+        break;
+      case 'line':
+        ctx.beginPath();
+        ctx.moveTo(element.x, element.y);
+        ctx.lineTo(element.x + (element.width || 0), element.y + (element.height || 0));
+        ctx.stroke();
+        break;
+    }
+
+    if (selectedId === element.id && tool === 'select') {
+      ctx.setLineDash([5, 5]);
+      ctx.strokeStyle = '#2563eb';
+      ctx.lineWidth = 1;
+      const w = element.width || (element.radius ? element.radius * 2 : 20);
+      const h = element.height || (element.radius ? element.radius * 2 : 20);
+      ctx.strokeRect(element.x - 5, element.y - 5, Math.abs(w) + 10, Math.abs(h) + 10);
+      ctx.setLineDash([]);
+    }
+  }, [selectedId, tool]);
+
+  const render = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    elements.forEach(el => drawElement(ctx, el));
+    if (currentElement) drawElement(ctx, currentElement);
+  }, [elements, currentElement, drawElement]);
+
+  useEffect(() => {
+    render();
+  }, [render]);
 
   const resizeCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
     if (canvas && container) {
       const { width, height } = container.getBoundingClientRect();
-      // Store current content
-      const ctx = canvas.getContext('2d');
-      let tempContent: ImageData | null = null;
-      if (ctx && canvas.width > 0 && canvas.height > 0) {
-        tempContent = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      }
-      
       canvas.width = width;
       canvas.height = height;
-      
-      // Restore content
-      if (ctx && tempContent) {
-        ctx.putImageData(tempContent, 0, 0);
-      }
+      render();
     }
-  }, []);
+  }, [render]);
 
   useEffect(() => {
     resizeCanvas();
@@ -58,226 +115,152 @@ const Whiteboard: React.FC = () => {
     return () => window.removeEventListener('resize', resizeCanvas);
   }, [resizeCanvas]);
 
-  const getCoordinates = (e: React.MouseEvent | React.TouchEvent | MouseEvent): Point => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-
-    const rect = canvas.getBoundingClientRect();
-    let clientX, clientY;
-
-    if ('touches' in e) {
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
-    } else if ('nativeEvent' in e && 'touches' in e.nativeEvent) {
-      clientX = e.nativeEvent.touches[0].clientX;
-      clientY = e.nativeEvent.touches[0].clientY;
-    } else {
-      clientX = (e as MouseEvent).clientX;
-      clientY = (e as MouseEvent).clientY;
-    }
-
-    return {
-      x: clientX - rect.left,
-      y: clientY - rect.top,
-    };
+  const getCoordinates = (e: any): Point => {
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: clientX - rect.left, y: clientY - rect.top };
   };
 
-  const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
-    if ('touches' in e.nativeEvent) e.preventDefault();
-    const { x, y } = getCoordinates(e);
-    setStartPos({ x, y });
+  const isWithinElement = (x: number, y: number, el: Element) => {
+    const w = Math.abs(el.width || 20);
+    const h = Math.abs(el.height || 20);
+    const minX = Math.min(el.x, el.x + (el.width || 0));
+    const minY = Math.min(el.y, el.y + (el.height || 0));
+    
+    if (el.type === 'circle') {
+      return Math.sqrt(Math.pow(x - el.x, 2) + Math.pow(y - el.y, 2)) <= (el.radius || 0) + 10;
+    }
+    if (el.type === 'pen' || el.type === 'eraser') {
+      return el.points?.some(p => Math.sqrt(Math.pow(x - p.x, 2) + Math.pow(y - p.y, 2)) < 15);
+    }
+    return x >= minX - 10 && x <= minX + w + 10 && y >= minY - 10 && y <= minY + h + 10;
+  };
 
-    if (tool === 'text') {
-      const id = Date.now().toString();
-      const newText: TextElement = {
-        id, x, y,
-        text: 'Type here...',
-        color,
-        fontSize: lineWidth * 4,
-      };
-      setTexts([...texts, newText]);
-      setSelectedTextId(id);
+  const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
+    const { x, y } = getCoordinates(e);
+
+    if (tool === 'select') {
+      const el = [...elements].reverse().find(el => isWithinElement(x, y, el));
+      if (el) {
+        setSelectedId(el.id);
+        setStartOffset({ x: x - el.x, y: y - el.y });
+        setAction('moving');
+      } else {
+        setSelectedId(null);
+        setAction('none');
+      }
       return;
     }
 
-    setIsDrawing(true);
-    const ctx = canvasRef.current?.getContext('2d');
-    if (ctx) {
-      // Save snapshot for shapes
-      if (['rectangle', 'circle', 'line'].includes(tool)) {
-        setSnapshot(ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height));
-      }
-      
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.strokeStyle = tool === 'eraser' ? '#ffffff' : color;
-      ctx.lineWidth = lineWidth;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-    }
+    const id = Date.now().toString();
+    const newEl: Element = {
+      id, type: tool, x, y, color, lineWidth,
+      points: [{ x, y }]
+    };
+
+    setCurrentElement(newEl);
+    setAction('drawing');
   };
 
-  const draw = (e: React.MouseEvent | React.TouchEvent) => {
+  const handleMouseMove = (e: React.MouseEvent | React.TouchEvent) => {
     const coords = getCoordinates(e);
     setCursorPos(coords);
 
-    if (!isDrawing || tool === 'text') return;
-    if ('touches' in e.nativeEvent) e.preventDefault();
-
-    const { x, y } = coords;
-    const ctx = canvasRef.current?.getContext('2d');
-    if (!ctx) return;
-
-    if (['rectangle', 'circle', 'line'].includes(tool) && snapshot) {
-      ctx.putImageData(snapshot, 0, 0);
-      ctx.beginPath();
-      ctx.strokeStyle = color;
-      ctx.lineWidth = lineWidth;
-
-      if (tool === 'rectangle') {
-        ctx.strokeRect(startPos.x, startPos.y, x - startPos.x, y - startPos.y);
+    if (action === 'drawing' && currentElement) {
+      const { x, y } = coords;
+      const updated = { ...currentElement };
+      if (['pen', 'eraser'].includes(tool)) {
+        updated.points = [...(updated.points || []), { x, y }];
+      } else if (tool === 'rectangle' || tool === 'line') {
+        updated.width = x - updated.x;
+        updated.height = y - updated.y;
       } else if (tool === 'circle') {
-        const radius = Math.sqrt(Math.pow(x - startPos.x, 2) + Math.pow(y - startPos.y, 2));
-        ctx.arc(startPos.x, startPos.y, radius, 0, 2 * Math.PI);
-        ctx.stroke();
-      } else if (tool === 'line') {
-        ctx.moveTo(startPos.x, startPos.y);
-        ctx.lineTo(x, y);
-        ctx.stroke();
+        updated.radius = Math.sqrt(Math.pow(x - updated.x, 2) + Math.pow(y - updated.y, 2));
       }
-    } else {
-      ctx.lineTo(x, y);
-      ctx.stroke();
+      setCurrentElement(updated);
+    } else if (action === 'moving' && selectedId) {
+      setElements(elements.map(el => {
+        if (el.id === selectedId) {
+          const dx = coords.x - startOffset.x - el.x;
+          const dy = coords.y - startOffset.y - el.y;
+          return {
+            ...el,
+            x: coords.x - startOffset.x,
+            y: coords.y - startOffset.y,
+            points: el.points?.map(p => ({ x: p.x + dx, y: p.y + dy }))
+          };
+        }
+        return el;
+      }));
     }
   };
 
-  const stopDrawing = () => {
-    setIsDrawing(false);
-    setSnapshot(null);
-  };
-
-  const clearCanvas = () => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    if (ctx && canvas) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      setTexts([]);
+  const handleMouseUp = () => {
+    if (action === 'drawing' && currentElement) {
+      setElements(prev => [...prev, currentElement]);
+      setCurrentElement(null);
     }
+    setAction('none');
   };
 
   return (
     <div className="whiteboard-container" ref={containerRef}>
       <div className="floating-toolbar">
         <div className="tool-section">
+          <button className={tool === 'select' ? 'active' : ''} onClick={() => setTool('select')} title="Select/Move">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" strokeWidth="2.5"><path d="M5 3l14 9-7 2 7 7-3 1-6-7-5 5V3z"/></svg>
+          </button>
           <button className={tool === 'pen' ? 'active' : ''} onClick={() => setTool('pen')} title="Pen">
-            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" strokeWidth="2"><path d="M12 19l7-7 3 3-7 7-3-3zM18 13l-1.5-1.5M2 22l5-5M2 22v-5l5 5zM11 7l4-4 2 2-4 4-2-2z"/></svg>
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" strokeWidth="2.5"><path d="M12 19l7-7 3 3-7 7-3-3zM18 13l-1.5-1.5M2 22l5-5M2 22v-5l5 5zM11 7l4-4 2 2-4 4-2-2z"/></svg>
           </button>
           <button className={tool === 'eraser' ? 'active' : ''} onClick={() => setTool('eraser')} title="Eraser">
-            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" strokeWidth="2"><path d="M20 20H7L3 16C2 15 2 14 3 13L13 3C14 2 15 2 16 3L21 8C22 9 22 10 21 11L15 17L20 20Z"/><path d="M18 11L11 4"/></svg>
-          </button>
-          <button className={tool === 'text' ? 'active' : ''} onClick={() => setTool('text')} title="Text">
-            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" strokeWidth="2"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg>
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" strokeWidth="2.5"><path d="M20 20H7L3 16C2 15 2 14 3 13L13 3C14 2 15 2 16 3L21 8C22 9 22 10 21 11L15 17L20 20Z"/><path d="M18 11L11 4"/></svg>
           </button>
         </div>
-        
         <div className="divider" />
-        
         <div className="tool-section">
           <button className={tool === 'rectangle' ? 'active' : ''} onClick={() => setTool('rectangle')} title="Rectangle">
-            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
           </button>
           <button className={tool === 'circle' ? 'active' : ''} onClick={() => setTool('circle')} title="Circle">
-            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" strokeWidth="2"><circle cx="12" cy="12" r="9"/></svg>
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" strokeWidth="2.5"><circle cx="12" cy="12" r="9"/></svg>
           </button>
           <button className={tool === 'line' ? 'active' : ''} onClick={() => setTool('line')} title="Line">
-            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" strokeWidth="2"><line x1="5" y1="19" x2="19" y2="5"/></svg>
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" strokeWidth="2.5"><line x1="5" y1="19" x2="19" y2="5"/></svg>
           </button>
         </div>
-
         <div className="divider" />
-
         <div className="tool-section colors">
           {['#000000', '#2563eb', '#dc2626', '#16a34a', '#ca8a04'].map(c => (
-            <button 
-              key={c} 
-              className={`color-swatch ${color === c ? 'selected' : ''}`}
-              style={{ backgroundColor: c }}
-              onClick={() => setColor(c)}
-            />
+            <button key={c} className={`color-swatch ${color === c ? 'selected' : ''}`} style={{ backgroundColor: c }} onClick={() => setColor(c)} />
           ))}
-          <input type="color" value={color} onChange={(e) => setColor(e.target.value)} />
         </div>
-
         <div className="divider" />
-
         <div className="tool-section slider-group">
           <input type="range" min="1" max="40" value={lineWidth} onChange={(e) => setLineWidth(Number(e.target.value))} />
           <span className="size-label">{lineWidth}px</span>
         </div>
-
         <div className="divider" />
-
-        <button onClick={clearCanvas} className="action-btn delete" title="Clear All">
-          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6"/></svg>
+        <button onClick={() => setElements([])} className="action-btn delete" title="Clear All">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="#ef4444" fill="none" strokeWidth="2.5"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6"/></svg>
         </button>
       </div>
 
       <div 
         className="canvas-wrapper" 
-        onMouseMove={(e) => setCursorPos(getCoordinates(e))}
-        onMouseLeave={() => setCursorPos(null)}
+        onMouseDown={handleMouseDown} 
+        onMouseMove={handleMouseMove} 
+        onMouseUp={handleMouseUp}
+        onTouchStart={handleMouseDown}
+        onTouchMove={handleMouseMove}
+        onTouchEnd={handleMouseUp}
+        style={{ cursor: (tool === 'pen' || tool === 'eraser') ? 'none' : (tool === 'select' ? 'default' : 'crosshair') }}
       >
-        <canvas
-          ref={canvasRef}
-          onMouseDown={startDrawing}
-          onMouseMove={draw}
-          onMouseUp={stopDrawing}
-          onMouseOut={stopDrawing}
-          onTouchStart={startDrawing}
-          onTouchMove={draw}
-          onTouchEnd={stopDrawing}
-        />
-        
-        {/* Brush/Eraser range preview */}
+        <canvas ref={canvasRef} />
         {cursorPos && (tool === 'pen' || tool === 'eraser') && (
-          <div 
-            className="brush-preview"
-            style={{
-              left: cursorPos.x,
-              top: cursorPos.y,
-              width: lineWidth,
-              height: lineWidth,
-              borderColor: tool === 'eraser' ? '#000' : color,
-              borderStyle: tool === 'eraser' ? 'dashed' : 'solid'
-            }}
-          />
+          <div className="brush-preview" style={{ left: cursorPos.x, top: cursorPos.y, width: lineWidth, height: lineWidth, borderColor: tool === 'eraser' ? '#000' : color, borderStyle: tool === 'eraser' ? 'dashed' : 'solid' }} />
         )}
-
-        {texts.map((text) => (
-          <div
-            key={text.id}
-            className={`text-element ${selectedTextId === text.id ? 'editing' : ''}`}
-            style={{
-              left: text.x,
-              top: text.y,
-              color: text.color,
-              fontSize: `${text.fontSize}px`,
-            }}
-            onClick={(e) => { e.stopPropagation(); setSelectedTextId(text.id); }}
-          >
-            {selectedTextId === text.id ? (
-              <input
-                autoFocus
-                value={text.text}
-                onChange={(e) => setTexts(texts.map(t => t.id === text.id ? { ...t, text: e.target.value } : t))}
-                onBlur={() => setSelectedTextId(null)}
-                style={{ color: text.color, fontSize: `${text.fontSize}px` }}
-              />
-            ) : (
-              text.text
-            )}
-          </div>
-        ))}
       </div>
     </div>
   );
