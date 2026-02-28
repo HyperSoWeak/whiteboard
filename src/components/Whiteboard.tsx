@@ -48,7 +48,7 @@ const Whiteboard: React.FC = () => {
 
   const activeProfile = profiles[activeProfileIndex];
 
-  const [action, setAction] = useState<'none' | 'drawing' | 'moving'>('none');
+  const [action, setAction] = useState<'none' | 'drawing' | 'moving' | 'erasing'>('none');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [currentElement, setCurrentElement] = useState<Element | null>(null);
   const [startOffset, setStartOffset] = useState<Point>({ x: 0, y: 0 });
@@ -139,12 +139,10 @@ const Whiteboard: React.FC = () => {
 
     switch (element.type) {
       case 'pen':
-      case 'eraser':
         if (element.points?.length) {
           ctx.beginPath();
           ctx.moveTo(element.points[0].x, element.points[0].y);
           element.points.forEach(p => ctx.lineTo(p.x, p.y));
-          ctx.strokeStyle = element.type === 'eraser' ? '#ffffff' : element.color;
           ctx.stroke();
         }
         break;
@@ -216,13 +214,23 @@ const Whiteboard: React.FC = () => {
     const minX = Math.min(el.x, el.x + (el.width || 0));
     const minY = Math.min(el.y, el.y + (el.height || 0));
     if (el.type === 'circle') return Math.sqrt(Math.pow(x - el.x, 2) + Math.pow(y - el.y, 2)) <= (el.radius || 0) + 10;
-    if (el.type === 'pen' || el.type === 'eraser') return el.points?.some(p => Math.sqrt(Math.pow(x - p.x, 2) + Math.pow(y - p.y, 2)) < 15);
+    if (el.type === 'pen') return el.points?.some(p => Math.sqrt(Math.pow(x - p.x, 2) + Math.pow(y - p.y, 2)) < 15);
     return x >= minX - 10 && x <= minX + w + 10 && y >= minY - 10 && y <= minY + h + 10;
   };
 
   const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
     setShowSettings(false);
     const { x, y } = getCoordinates(e);
+
+    if (tool === 'eraser') {
+      setAction('erasing');
+      const filtered = elements.filter(el => !isWithinElement(x, y, el));
+      if (filtered.length !== elements.length) {
+        setElements(filtered);
+      }
+      return;
+    }
+
     if (tool === 'select') {
       const el = [...elements].reverse().find(el => isWithinElement(x, y, el));
       if (el) {
@@ -235,6 +243,7 @@ const Whiteboard: React.FC = () => {
       }
       return;
     }
+
     const id = Date.now().toString();
     const newEl: Element = {
       id, type: tool, x, y, color: activeProfile.color, lineWidth: activeProfile.lineWidth,
@@ -247,10 +256,19 @@ const Whiteboard: React.FC = () => {
   const handleMouseMove = (e: React.MouseEvent | React.TouchEvent) => {
     const coords = getCoordinates(e);
     setCursorPos(coords);
+
+    if (action === 'erasing') {
+      const filtered = elements.filter(el => !isWithinElement(coords.x, coords.y, el));
+      if (filtered.length !== elements.length) {
+        setElements(filtered);
+      }
+      return;
+    }
+
     if (action === 'drawing' && currentElement) {
       const { x, y } = coords;
       const updated = { ...currentElement };
-      if (['pen', 'eraser'].includes(tool)) updated.points = [...(updated.points || []), { x, y }];
+      if (tool === 'pen') updated.points = [...(updated.points || []), { x, y }];
       else if (tool === 'rectangle' || tool === 'line') { updated.width = x - updated.x; updated.height = y - updated.y; }
       else if (tool === 'circle') updated.radius = Math.sqrt(Math.pow(x - updated.x, 2) + Math.pow(y - updated.y, 2));
       setCurrentElement(updated);
@@ -272,7 +290,7 @@ const Whiteboard: React.FC = () => {
       setElements(newElements);
       saveToHistory(newElements);
       setCurrentElement(null);
-    } else if (action === 'moving') {
+    } else if (action === 'moving' || action === 'erasing') {
       saveToHistory(elements);
     }
     setAction('none');
@@ -366,7 +384,7 @@ const Whiteboard: React.FC = () => {
       <div className="canvas-wrapper" onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onTouchStart={handleMouseDown} onTouchMove={handleMouseMove} onTouchEnd={handleMouseUp} style={{ cursor: (tool === 'pen' || tool === 'eraser') ? 'none' : (tool === 'select' ? 'default' : 'crosshair') }}>
         <canvas ref={canvasRef} />
         {cursorPos && (tool === 'pen' || tool === 'eraser') && (
-          <div className="brush-preview" style={{ left: cursorPos.x, top: cursorPos.y, width: activeProfile.lineWidth, height: activeProfile.lineWidth, borderColor: tool === 'eraser' ? '#000' : activeProfile.color, borderStyle: tool === 'eraser' ? 'dashed' : 'solid' }} />
+          <div className="brush-preview" style={{ left: cursorPos.x, top: cursorPos.y, width: tool === 'eraser' ? 20 : activeProfile.lineWidth, height: tool === 'eraser' ? 20 : activeProfile.lineWidth, borderColor: '#000', borderStyle: 'dashed' }} />
         )}
       </div>
     </div>
