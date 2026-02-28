@@ -1,0 +1,88 @@
+.whiteboard-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  background-color: #f0f0f0;
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  gap: 20px;
+  padding: 10px 20px;
+  background-color: #ffffff;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  z-index: 10;
+  align-items: center;
+}
+
+.tool-group {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+button {
+  padding: 8px 16px;
+  border: 1px solid #ccc;
+  background: white;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+button.active {
+  background-color: #007bff;
+  color: white;
+  border-color: #0056b3;
+}
+
+button:hover:not(.active) {
+  background-color: #f8f9fa;
+}
+
+.clear-btn {
+  margin-left: auto;
+  background-color: #dc3545;
+  color: white;
+  border-color: #bd2130;
+}
+
+.clear-btn:hover {
+  background-color: #c82333;
+}
+
+.canvas-wrapper {
+  flex: 1;
+  position: relative;
+  cursor: crosshair;
+  background-color: white;
+}
+
+canvas {
+  display: block;
+}
+
+.text-element {
+  position: absolute;
+  user-select: none;
+  cursor: text;
+  padding: 2px 5px;
+  border: 1px solid transparent;
+}
+
+.text-element.editing {
+  border: 1px dashed #007bff;
+  background: rgba(0, 123, 255, 0.05);
+}
+
+.text-element input {
+  font-family: inherit;
+  width: auto;
+  min-width: 50px;
+}
+
+input[type="range"] {
+  width: 100px;
+}
